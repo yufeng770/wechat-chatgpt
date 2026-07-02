@@ -2,6 +2,8 @@ import {ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum} from
 import {User} from "./interface";
 import {isTokenOverLimit} from "./utils.js";
 
+const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant. Use the user's language. Reply in plain text only. Do not use Markdown formatting, including headings, bullet lists, numbered lists, tables, blockquotes, bold or italic markers, code fences, or LaTeX blocks. Keep answers concise and natural for WeChat. If code is needed, provide plain code text without Markdown fences.";
+
 /**
  * 使用内存作为数据库
  */
@@ -24,7 +26,7 @@ class DB {
       chatMessage: [
         {
           role: ChatCompletionRequestMessageRoleEnum.System,
-          content: "You are a helpful assistant."
+          content: DEFAULT_SYSTEM_PROMPT
         }
       ],
     };
@@ -110,7 +112,7 @@ class DB {
       user.chatMessage = [
         {
           role: ChatCompletionRequestMessageRoleEnum.System,
-          content: "You are a helpful assistant."
+          content: DEFAULT_SYSTEM_PROMPT
         }
       ];
     }
