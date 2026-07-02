@@ -5,6 +5,7 @@ export interface IConfig {
   openai_api_key: string;
   openaiUserAgent: string;
   model: string;
+  chatCommandPrefix: string;
   chatTriggerRule: string;
   disableGroupMessage: boolean;
   temperature: number;

@@ -32,6 +32,7 @@ interface ICommand{
   exec: (talker:Speaker, text:string) => Promise<void>;
 }
 export class ChatGPTBot {
+  chatCommandPrefix = config.chatCommandPrefix;
   chatPrivateTriggerKeyword = config.chatPrivateTriggerKeyword;
   chatTriggerRule = config.chatTriggerRule? new RegExp(config.chatTriggerRule): undefined;
   disableGroupMessage = config.disableGroupMessage || false;
@@ -42,6 +43,9 @@ export class ChatGPTBot {
   }
   get chatGroupTriggerRegEx(): RegExp {
     return new RegExp(`^@${regexpEncode(this.botName)}\\s`);
+  }
+  get chatCommandTriggerRule(): RegExp {
+    return new RegExp(`^${regexpEncode(this.chatCommandPrefix)}(?:\\s+|$)`);
   }
   get chatPrivateTriggerRule(): RegExp | undefined {
     const { chatPrivateTriggerKeyword, chatTriggerRule } = this;
@@ -120,7 +124,9 @@ export class ChatGPTBot {
 
     const { chatTriggerRule, chatPrivateTriggerRule } = this;
 
-    if (privateChat && chatPrivateTriggerRule) {
+    if (this.chatCommandTriggerRule.test(text)) {
+      text = text.replace(this.chatCommandTriggerRule, "")
+    } else if (privateChat && chatPrivateTriggerRule) {
       text = text.replace(chatPrivateTriggerRule, "")
     } else if (!privateChat) {
       text = text.replace(this.chatGroupTriggerRegEx, "")
@@ -168,9 +174,11 @@ export class ChatGPTBot {
   triggerGPTMessage(text: string, privateChat: boolean = false): boolean {
     const { chatTriggerRule } = this;
     let triggered = false;
-    if (privateChat) {
+    if (this.chatCommandTriggerRule.test(text)) {
+      triggered = true;
+    } else if (privateChat) {
       const regEx = this.chatPrivateTriggerRule
-      triggered = regEx? regEx.test(text): true;
+      triggered = regEx? regEx.test(text): false;
     } else {
       triggered = this.chatGroupTriggerRegEx.test(text);
       // group message support `chatTriggerRule`

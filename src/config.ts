@@ -22,6 +22,7 @@ export const config: IConfig = {
   openai_api_key: readEnv(process.env.OPENAI_API_KEY) || "123456789",
   openaiUserAgent: readEnv(process.env.OPENAI_USER_AGENT) || "PostmanRuntime/7.45.0",
   model: readEnv(process.env.MODEL) || "gpt-3.5-turbo",
+  chatCommandPrefix: readEnv(process.env.CHAT_COMMAND_PREFIX) || "/ai",
   chatPrivateTriggerKeyword: readEnv(process.env.CHAT_PRIVATE_TRIGGER_KEYWORD) || "",
   chatTriggerRule: readEnv(process.env.CHAT_TRIGGER_RULE) || "",
   disableGroupMessage: readEnv(process.env.DISABLE_GROUP_MESSAGE)?.toLowerCase() === "true",
