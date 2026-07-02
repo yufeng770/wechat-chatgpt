@@ -28,6 +28,43 @@ function safeJson(value: any): string | undefined {
   }
 }
 
+function parseMaybeJson(value: any): any {
+  if (typeof value !== "string") {
+    return value;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function redactSensitive(value: any): any {
+  if (!value || typeof value !== "object") {
+    return typeof value === "string"
+      ? value.replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer ***REDACTED***")
+      : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactSensitive);
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      const normalizedKey = key.toLowerCase();
+      if (
+        normalizedKey === "authorization" ||
+        normalizedKey === "api-key" ||
+        normalizedKey === "x-api-key" ||
+        normalizedKey === "apikey" ||
+        normalizedKey.includes("api_key")
+      ) {
+        return [key, "***REDACTED***"];
+      }
+      return [key, redactSensitive(item)];
+    })
+  );
+}
+
 function formatOpenAIError(error: any): string {
   const status = error?.response?.status;
   const statusText = error?.response?.statusText;
@@ -48,6 +85,28 @@ function formatOpenAIError(error: any): string {
   ].filter(Boolean).join(" ");
 }
 
+function logOpenAIError(error: any): void {
+  const details = {
+    message: error?.message,
+    code: error?.code,
+    request: {
+      method: error?.config?.method?.toUpperCase(),
+      url: error?.config?.url,
+      timeout: error?.config?.timeout,
+      headers: redactSensitive(error?.config?.headers),
+      data: redactSensitive(parseMaybeJson(error?.config?.data)),
+    },
+    response: {
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      headers: redactSensitive(error?.response?.headers),
+      data: redactSensitive(error?.response?.data),
+    },
+  };
+  console.error(`ChatGPT request failed: ${formatOpenAIError(error)}`);
+  console.error(`ChatGPT request failed details: ${safeJson(details)}`);
+}
+
 /**
  * Get completion from OpenAI
  * @param username
@@ -63,7 +122,7 @@ async function chatgpt(username:string,message: string): Promise<string> {
     messages: messages,
     temperature: config.temperature,
   }).catch((error) => {
-    console.error(`ChatGPT request failed: ${formatOpenAIError(error)}`);
+    logOpenAIError(error);
     return undefined;
   });
   if (!response) {
