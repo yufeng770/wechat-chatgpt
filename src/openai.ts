@@ -14,6 +14,20 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+function safeJson(value: any): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function formatOpenAIError(error: any): string {
   const status = error?.response?.status;
   const statusText = error?.response?.statusText;
@@ -21,12 +35,16 @@ function formatOpenAIError(error: any): string {
   const method = error?.config?.method?.toUpperCase();
   const url = error?.config?.url;
   const responseMessage = typeof data === "string" ? data : data?.error?.message;
+  const responseData = safeJson(data);
   return [
+    `api=${config.api || "https://api.openai.com/v1"}`,
+    `model=${config.model}`,
     status ? `status=${status}` : undefined,
     statusText ? `statusText=${statusText}` : undefined,
     method ? `method=${method}` : undefined,
     url ? `url=${url}` : undefined,
     responseMessage ? `message=${responseMessage}` : error?.message,
+    responseData ? `response=${responseData}` : undefined,
   ].filter(Boolean).join(" ");
 }
 
@@ -39,6 +57,7 @@ async function chatgpt(username:string,message: string): Promise<string> {
   // 先将用户输入的消息添加到数据库中
   DBUtils.addUserMessage(username, message);
   const messages = DBUtils.getChatMessage(username);
+  console.log(`ChatGPT request: api=${config.api || "https://api.openai.com/v1"} model=${config.model} messages=${messages.length} temperature=${config.temperature} promptLength=${message.length}`);
   const response = await openai.createChatCompletion({
     model: config.model,
     messages: messages,
