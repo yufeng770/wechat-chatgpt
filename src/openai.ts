@@ -11,6 +11,11 @@ import {config} from "./config.js";
 const configuration = new Configuration({
   apiKey: config.openai_api_key,
   basePath: config.api,
+  baseOptions: {
+    headers: {
+      "User-Agent": config.openaiUserAgent,
+    },
+  },
 });
 const openai = new OpenAIApi(configuration);
 
@@ -76,6 +81,7 @@ function formatOpenAIError(error: any): string {
   return [
     `api=${config.api || "https://api.openai.com/v1"}`,
     `model=${config.model}`,
+    `userAgent=${config.openaiUserAgent}`,
     status ? `status=${status}` : undefined,
     statusText ? `statusText=${statusText}` : undefined,
     method ? `method=${method}` : undefined,
@@ -116,7 +122,7 @@ async function chatgpt(username:string,message: string): Promise<string> {
   // 先将用户输入的消息添加到数据库中
   DBUtils.addUserMessage(username, message);
   const messages = DBUtils.getChatMessage(username);
-  console.log(`ChatGPT request: api=${config.api || "https://api.openai.com/v1"} model=${config.model} messages=${messages.length} temperature=${config.temperature} promptLength=${message.length}`);
+  console.log(`ChatGPT request: api=${config.api || "https://api.openai.com/v1"} model=${config.model} userAgent=${config.openaiUserAgent} messages=${messages.length} temperature=${config.temperature} promptLength=${message.length}`);
   const response = await openai.createChatCompletion({
     model: config.model,
     messages: messages,

@@ -20,6 +20,7 @@ const readTemperature = (): number => {
 export const config: IConfig = {
   api: readEnv(process.env.API) || readEnv(process.env.ENDPOINT),
   openai_api_key: readEnv(process.env.OPENAI_API_KEY) || "123456789",
+  openaiUserAgent: readEnv(process.env.OPENAI_USER_AGENT) || "PostmanRuntime/7.45.0",
   model: readEnv(process.env.MODEL) || "gpt-3.5-turbo",
   chatPrivateTriggerKeyword: readEnv(process.env.CHAT_PRIVATE_TRIGGER_KEYWORD) || "",
   chatTriggerRule: readEnv(process.env.CHAT_TRIGGER_RULE) || "",

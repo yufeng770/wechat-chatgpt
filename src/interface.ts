@@ -3,6 +3,7 @@ import {ChatCompletionRequestMessage} from "openai";
 export interface IConfig {
   api?: string;
   openai_api_key: string;
+  openaiUserAgent: string;
   model: string;
   chatTriggerRule: string;
   disableGroupMessage: boolean;
