@@ -14,6 +14,22 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+function formatOpenAIError(error: any): string {
+  const status = error?.response?.status;
+  const statusText = error?.response?.statusText;
+  const data = error?.response?.data;
+  const method = error?.config?.method?.toUpperCase();
+  const url = error?.config?.url;
+  const responseMessage = typeof data === "string" ? data : data?.error?.message;
+  return [
+    status ? `status=${status}` : undefined,
+    statusText ? `statusText=${statusText}` : undefined,
+    method ? `method=${method}` : undefined,
+    url ? `url=${url}` : undefined,
+    responseMessage ? `message=${responseMessage}` : error?.message,
+  ].filter(Boolean).join(" ");
+}
+
 /**
  * Get completion from OpenAI
  * @param username
@@ -24,14 +40,20 @@ async function chatgpt(username:string,message: string): Promise<string> {
   DBUtils.addUserMessage(username, message);
   const messages = DBUtils.getChatMessage(username);
   const response = await openai.createChatCompletion({
-    model: "gpt-3.5-turbo",
+    model: config.model,
     messages: messages,
     temperature: config.temperature,
+  }).catch((error) => {
+    console.error(`ChatGPT request failed: ${formatOpenAIError(error)}`);
+    return undefined;
   });
+  if (!response) {
+    return "";
+  }
   let assistantMessage = "";
   try {
     if (response.status === 200) {
-      assistantMessage = response.data.choices[0].message?.content.replace(/^\n+|\n+$/g, "") as string;
+      assistantMessage = response.data.choices[0]?.message?.content?.replace(/^\n+|\n+$/g, "") || "";
     }else{
       console.log(`Something went wrong,Code: ${response.status}, ${response.statusText}`)
     }
