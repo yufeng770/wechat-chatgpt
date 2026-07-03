@@ -150,6 +150,17 @@ export class ChatGPTBot {
     }
     return config.chatgptBlockWords.some((word) => message.includes(word));
   }
+  getKeywordReply(rawText: string, privateChat: boolean): string | undefined {
+    if (config.keywordReplies.length === 0) {
+      return undefined;
+    }
+    const text = this.cleanMessage(rawText, privateChat).trim();
+    const rule = config.keywordReplies.find(({ keyword }) => text.includes(keyword));
+    if (!rule) {
+      return undefined;
+    }
+    return rule.replies[Math.floor(Math.random() * rule.replies.length)];
+  }
   // The message is segmented according to its size
   async trySay(
     talker: RoomInterface | ContactInterface,
@@ -287,6 +298,15 @@ export class ChatGPTBot {
         let url = await dalle(await room.topic(), imgContent) as string;
         const fileBox = FileBox.fromUrl(url)
         message.say(fileBox)
+      }
+      return;
+    }
+    const keywordReply = this.getKeywordReply(rawText, privateChat);
+    if (keywordReply) {
+      if (privateChat) {
+        await this.trySay(talker, keywordReply);
+      } else {
+        await this.trySay(room, keywordReply);
       }
       return;
     }

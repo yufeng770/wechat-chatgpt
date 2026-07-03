@@ -1,6 +1,6 @@
 import * as dotenv from "dotenv";
 dotenv.config();
-import { IConfig } from "./interface";
+import { IConfig, KeywordReply } from "./interface";
 
 const readEnv = (value?: string): string | undefined => {
   const trimmed = value?.trim();
@@ -17,6 +17,23 @@ const readTemperature = (): number => {
   return Number.isFinite(temperature) ? temperature : 0.6;
 };
 
+const readKeywordReplies = (value?: string): KeywordReply[] => {
+  const envValue = readEnv(value);
+  if (!envValue) {
+    return [];
+  }
+  return envValue
+    .split(";")
+    .map((rule) => {
+      const [keyword, replies] = rule.split("=");
+      return {
+        keyword: keyword?.trim(),
+        replies: replies?.split("|").map((reply) => reply.trim()).filter(Boolean) || [],
+      };
+    })
+    .filter((rule): rule is KeywordReply => Boolean(rule.keyword && rule.replies.length));
+};
+
 export const config: IConfig = {
   api: readEnv(process.env.API) || readEnv(process.env.ENDPOINT),
   openai_api_key: readEnv(process.env.OPENAI_API_KEY) || "123456789",
@@ -29,4 +46,5 @@ export const config: IConfig = {
   temperature: readTemperature(),
   blockWords: readCsvEnv(process.env.BLOCK_WORDS),
   chatgptBlockWords: readCsvEnv(process.env.CHATGPT_BLOCK_WORDS),
+  keywordReplies: readKeywordReplies(process.env.KEYWORD_REPLIES),
 };

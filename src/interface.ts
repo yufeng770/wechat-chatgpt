@@ -12,6 +12,11 @@ export interface IConfig {
   blockWords: string[];
   chatgptBlockWords: string[];
   chatPrivateTriggerKeyword: string;
+  keywordReplies: KeywordReply[];
+}
+export interface KeywordReply {
+  keyword: string;
+  replies: string[];
 }
 export interface User {
   username: string,
