@@ -1,5 +1,6 @@
 import {
   Configuration,
+  ChatCompletionRequestMessageRoleEnum,
   CreateImageRequestResponseFormatEnum,
   CreateImageRequestSizeEnum,
   OpenAIApi
@@ -18,6 +19,11 @@ const configuration = new Configuration({
   },
 });
 const openai = new OpenAIApi(configuration);
+
+interface ChatGPTOptions {
+  historyMessage?: string;
+  transientContext?: string;
+}
 
 function safeJson(value: any): string | undefined {
   if (!value) {
@@ -118,14 +124,28 @@ function logOpenAIError(error: any): void {
  * @param username
  * @param message
  */
-async function chatgpt(username:string,message: string): Promise<string> {
+async function chatgpt(username:string,message: string, options: ChatGPTOptions = {}): Promise<string> {
   // 先将用户输入的消息添加到数据库中
-  DBUtils.addUserMessage(username, message);
+  DBUtils.addUserMessage(username, options.historyMessage || message);
   const messages = DBUtils.getChatMessage(username);
-  console.log(`ChatGPT request: api=${config.api || "https://api.openai.com/v1"} model=${config.model} userAgent=${config.openaiUserAgent} messages=${messages.length} temperature=${config.temperature} promptLength=${message.length}`);
+  const requestMessages = options.transientContext
+    ? [
+      ...messages.slice(0, -1),
+      {
+        role: ChatCompletionRequestMessageRoleEnum.User,
+        content: [
+          options.transientContext,
+          "当前要回复的消息：",
+          message,
+          "直接输出要发到群里的回复，不要复述上下文，不要加人名冒号。",
+        ].join("\n"),
+      },
+    ]
+    : messages;
+  console.log(`ChatGPT request: api=${config.api || "https://api.openai.com/v1"} model=${config.model} userAgent=${config.openaiUserAgent} messages=${requestMessages.length} temperature=${config.temperature} promptLength=${message.length} contextLength=${options.transientContext?.length || 0}`);
   const response = await openai.createChatCompletion({
     model: config.model,
-    messages: messages,
+    messages: requestMessages,
     temperature: config.temperature,
   }).catch((error) => {
     logOpenAIError(error);

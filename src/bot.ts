@@ -1,5 +1,5 @@
 import { config } from "./config.js";
-import {ContactImpl, ContactInterface, RoomImpl, RoomInterface} from "wechaty/impls";
+import {ContactInterface, RoomInterface} from "wechaty/impls";
 import { Message } from "wechaty";
 import {FileBox} from "file-box";
 import {chatgpt, dalle, whisper} from "./openai.js";
@@ -25,11 +25,15 @@ enum MessageType {
   Post = 16, // Moment, Channel, Tweet, etc
 }
 const SINGLE_MESSAGE_MAX_SIZE = 500;
-type Speaker = RoomImpl | ContactImpl;
+type ReplyTarget = RoomInterface | ContactInterface;
+interface CommandContext {
+  target: ReplyTarget;
+  conversationKey: string;
+}
 interface ICommand{
   name:string;
   description:string;
-  exec: (talker:Speaker, text:string) => Promise<void>;
+  exec: (context:CommandContext, text:string) => Promise<void>;
 }
 export class ChatGPTBot {
   chatCommandPrefix = config.chatCommandPrefix;
@@ -59,8 +63,8 @@ export class ChatGPTBot {
     {
       name: "help",
       description: "显示帮助信息",
-      exec: async (talker) => {
-        await this.trySay(talker,"========\n" +
+      exec: async (context) => {
+        await this.trySay(context.target,"========\n" +
           "/cmd help\n" +
           "# 显示帮助信息\n" +
           "/cmd prompt <PROMPT>\n" +
@@ -75,23 +79,15 @@ export class ChatGPTBot {
     {
       name: "prompt",
       description: "设置当前会话的prompt",
-      exec: async (talker, prompt) => {
-        if (talker instanceof RoomImpl) {
-          DBUtils.setPrompt(await talker.topic(), prompt);
-        }else {
-          DBUtils.setPrompt(talker.name(), prompt);
-        }
+      exec: async (context, prompt) => {
+        DBUtils.setPrompt(context.conversationKey, prompt);
       }
     },
     {
       name: "clear",
       description: "清除自上次启动以来的所有会话",
-      exec: async (talker) => {
-        if (talker instanceof RoomImpl) {
-          DBUtils.clearHistory(await talker.topic());
-        }else{
-          DBUtils.clearHistory(talker.name());
-        }
+      exec: async (context) => {
+        DBUtils.clearHistory(context.conversationKey);
       }
     }
   ]
@@ -105,14 +101,51 @@ export class ChatGPTBot {
    * @param contact
    * @param rawText
    */
-  async command(contact: any, rawText: string): Promise<void> {
+  async command(context: CommandContext, rawText: string): Promise<void> {
     const [commandName, ...args] = rawText.split(/\s+/);
     const command = this.commands.find(
       (command) => command.name === commandName
     );
     if (command) {
-      await command.exec(contact, args.join(" "));
+      await command.exec(context, args.join(" "));
     }
+  }
+  async getConversationKey(talker: ContactInterface, room?: RoomInterface): Promise<string> {
+    if (!room) {
+      return `private:${talker.id || talker.name()}`;
+    }
+    return `room:${room.id || await room.topic()}:contact:${talker.id || talker.name()}`;
+  }
+  async getRoomMemoryKey(room: RoomInterface): Promise<string> {
+    return `room:${room.id || await room.topic()}`;
+  }
+  async getSpeakerName(talker: ContactInterface, room?: RoomInterface): Promise<string> {
+    if (room) {
+      const roomAlias = await room.alias(talker).catch(() => undefined);
+      if (roomAlias) {
+        return roomAlias;
+      }
+    }
+    return talker.name();
+  }
+  async rememberGroupMessage(talker: ContactInterface, room: RoomInterface, rawText: string): Promise<void> {
+    const text = this.cleanMessage(rawText, false).trim();
+    if (!text) {
+      return;
+    }
+    const speakerName = await this.getSpeakerName(talker, room);
+    DBUtils.addGroupMemoryMessage(await this.getRoomMemoryKey(room), {
+      speakerId: talker.id || speakerName,
+      speakerName,
+      text,
+    });
+  }
+  async rememberBotGroupMessage(room: RoomInterface, text: string): Promise<void> {
+    DBUtils.addGroupMemoryMessage(await this.getRoomMemoryKey(room), {
+      speakerId: "bot",
+      speakerName: this.botName || "bot",
+      text,
+    });
   }
   // remove more times conversation and mention
   cleanMessage(rawText: string, privateChat: boolean = false): string {
@@ -135,8 +168,8 @@ export class ChatGPTBot {
     // remove more text via - - - - - - - - - - - - - - -
     return text
   }
-  async getGPTMessage(talkerName: string,text: string): Promise<string> {
-    let gptMessage = await chatgpt(talkerName,text);
+  async getGPTMessage(talkerName: string,text: string, transientContext?: string, historyMessage?: string): Promise<string> {
+    let gptMessage = await chatgpt(talkerName,text, {transientContext, historyMessage});
     if (gptMessage !=="") {
       DBUtils.addAssistantMessage(talkerName,gptMessage);
       return gptMessage;
@@ -159,7 +192,26 @@ export class ChatGPTBot {
     if (!rule) {
       return undefined;
     }
+    if (Math.random() >= config.keywordReplyProbability) {
+      return undefined;
+    }
     return rule.replies[Math.floor(Math.random() * rule.replies.length)];
+  }
+  triggerRandomGroupMessage(rawText: string, privateChat: boolean): boolean {
+    if (
+      privateChat ||
+      this.disableGroupMessage ||
+      config.groupRandomReplyProbability <= 0 ||
+      rawText.startsWith("/") ||
+      this.chatGroupTriggerRegEx.test(rawText)
+    ) {
+      return false;
+    }
+    const triggered = Math.random() < config.groupRandomReplyProbability;
+    if (triggered) {
+      console.log(`🎲 Random group reply: ${rawText}`);
+    }
+    return triggered;
   }
   // The message is segmented according to its size
   async trySay(
@@ -234,7 +286,7 @@ export class ChatGPTBot {
   }
 
   async onPrivateMessage(talker: ContactInterface, text: string) {
-    const gptMessage = await this.getGPTMessage(talker.name(),text);
+    const gptMessage = await this.getGPTMessage(await this.getConversationKey(talker),text);
     await this.trySay(talker, gptMessage);
   }
 
@@ -243,9 +295,16 @@ export class ChatGPTBot {
     text: string,
     room: RoomInterface
   ) {
-    const gptMessage = await this.getGPTMessage(await room.topic(),text);
-    const result = `@${talker.name()} ${text}\n\n------\n ${gptMessage}`;
-    await this.trySay(room, result);
+    const speakerName = await this.getSpeakerName(talker, room);
+    const currentMessage = `${speakerName}: ${text}`;
+    const gptMessage = await this.getGPTMessage(
+      await this.getConversationKey(talker, room),
+      currentMessage,
+      DBUtils.getGroupMemoryPrompt(await this.getRoomMemoryKey(room)),
+      currentMessage
+    );
+    await this.trySay(room, gptMessage);
+    await this.rememberBotGroupMessage(room, gptMessage);
   }
   async onMessage(message: Message) {
     const talker = message.talker();
@@ -276,14 +335,16 @@ export class ChatGPTBot {
       })
       return;
     }
+    if (room && !rawText.startsWith("/cmd ") && !rawText.startsWith("/img")) {
+      await this.rememberGroupMessage(talker, room, rawText);
+    }
     if (rawText.startsWith("/cmd ")){
       console.log(`🤖 Command: ${rawText}`)
       const cmdContent = rawText.slice(5) // 「/cmd 」一共5个字符(注意空格)
-      if (privateChat) {
-        await this.command(talker, cmdContent);
-      }else{
-        await this.command(room, cmdContent);
-      }
+      await this.command({
+        target: room || talker,
+        conversationKey: await this.getConversationKey(talker, room),
+      }, cmdContent);
       return;
     }
     // 使用DallE生成图片
@@ -307,11 +368,15 @@ export class ChatGPTBot {
         await this.trySay(talker, keywordReply);
       } else {
         await this.trySay(room, keywordReply);
+        await this.rememberBotGroupMessage(room, keywordReply);
       }
       return;
     }
-    if (this.triggerGPTMessage(rawText, privateChat)) {
+    if (this.triggerGPTMessage(rawText, privateChat) || this.triggerRandomGroupMessage(rawText, privateChat)) {
       const text = this.cleanMessage(rawText, privateChat);
+      if (!text.trim()) {
+        return;
+      }
       if (privateChat) {
         return await this.onPrivateMessage(talker, text);
       } else{

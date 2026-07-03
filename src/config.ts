@@ -17,6 +17,22 @@ const readTemperature = (): number => {
   return Number.isFinite(temperature) ? temperature : 0.6;
 };
 
+const readProbability = (value?: string, fallback = 1): number => {
+  const probability = Number.parseFloat(readEnv(value) || "");
+  if (!Number.isFinite(probability)) {
+    return fallback;
+  }
+  return Math.min(1, Math.max(0, probability));
+};
+
+const readInteger = (value?: string, fallback = 20): number => {
+  const integer = Number.parseInt(readEnv(value) || "", 10);
+  if (!Number.isFinite(integer)) {
+    return fallback;
+  }
+  return Math.min(100, Math.max(0, integer));
+};
+
 const readKeywordReplies = (value?: string): KeywordReply[] => {
   const envValue = readEnv(value);
   if (!envValue) {
@@ -47,4 +63,7 @@ export const config: IConfig = {
   blockWords: readCsvEnv(process.env.BLOCK_WORDS),
   chatgptBlockWords: readCsvEnv(process.env.CHATGPT_BLOCK_WORDS),
   keywordReplies: readKeywordReplies(process.env.KEYWORD_REPLIES),
+  keywordReplyProbability: readProbability(process.env.KEYWORD_REPLY_PROBABILITY),
+  groupRandomReplyProbability: readProbability(process.env.GROUP_RANDOM_REPLY_PROBABILITY, 0),
+  groupMemorySize: readInteger(process.env.GROUP_MEMORY_SIZE, 20),
 };
